@@ -1,0 +1,90 @@
+version: '3'  
+
+services:
+
+  proxy:
+    image: jwilder/nginx-proxy:alpine
+    labels:
+      - "com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy=true"
+    container_name: nextcloud-proxy
+    networks:
+      - nextcloud_network
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - G:/nextcloudhome/proxy/conf.d:/etc/nginx/conf.d:rw
+      - G:/nextcloudhome/proxy/vhost.d:/etc/nginx/vhost.d:rw
+      - G:/nextcloudhome/app/log:/var/log/nginx:rw
+      - G:/nextcloudhome/proxy/html:/usr/share/nginx/html:rw
+      - G:/nextcloudhome/proxy/certs:/etc/nginx/certs:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    restart: always
+  
+  letsencrypt:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: nextcloud-letsencrypt
+    depends_on:
+      - proxy
+    networks:
+      - nextcloud_network
+    volumes:
+      - G:/nextcloudhome/proxy/certs:/etc/nginx/certs:rw
+      - G:/nextcloudhome/proxy/vhost.d:/etc/nginx/vhost.d:rw
+      - G:/nextcloudhome/proxy/html:/usr/share/nginx/html:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: always
+  
+  db:
+    image: mariadb
+    container_name: nextcloud-mariadb
+    networks:
+      - nextcloud_network
+    volumes:
+      - db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_PASSWORD=mysqlpassword
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+    ports:
+      - 3333:3306
+    restart: always
+   
+  app:
+    image: nextcloud:latest
+    container_name: nextcloud-app
+    networks:
+      - nextcloud_network
+    depends_on:
+      - letsencrypt
+      - proxy
+      - db
+      - redis
+    volumes:
+      - nextcloud:/var/www/html
+      - G:/nextcloudhome/config:/var/www/html/config
+      - G:/nextcloudhome/custom_apps:/var/www/html/custom_apps
+      - G:/nextcloudhome/data:/var/www/html/data
+      - G:/nextcloudhome/themes:/var/www/html/themes
+    environment:
+      - VIRTUAL_HOST=x.x.x.x,mydomain.com
+      - LETSENCRYPT_HOST=mydomain.com
+      - LETSENCRYPT_EMAIL=myemail@gmail.com
+    restart: always
+    
+  redis:
+    image: redis:alpine
+    container_name: redis
+    volumes:
+      - G:/redis/docker/nextcloud/redis:/data
+    networks:
+      - nextcloud_network
+    restart: always 
+      
+volumes:
+  nextcloud:
+  db:
+networks:
+  nextcloud_network:
